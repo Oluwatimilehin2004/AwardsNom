@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Awards count</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Awards nominations</h1>
+  <p class="lede">Visitors <b id="v">…</b> · Tapped "Done" <b id="d">…</b></p>
+  <p class="note">"Done" counts people who say they nominated, once per device. It isn't ALU's official tally. Refreshes every 30 seconds.</p>
+</main>
+<script>
+const BASE = "https://abacus.jasoncameron.dev", NS = "papa-awards-2026-aojudun";
+async function get(k){
+  try { const r = await fetch(BASE + "/get/" + NS + "/" + k, {cache: "no-store"}); return r.ok ? ((await r.json()).value || 0) : 0; }
+  catch(e){ return "?"; }
+}
+async function load(){
+  document.getElementById("v").textContent = await get("visitor");
+  document.getElementById("d").textContent = await get("done");
+}
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>
