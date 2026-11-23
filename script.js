@@ -137,20 +137,31 @@ const WRITEUPS = {
 // ===== Page logic =====
 (function(){
   const $ = id => document.getElementById(id);
+  const TURN_KEY = 'papa-awards-turn-v2';
 
-  // Pick which version this visitor gets. Visitors take turns (1, 2, 3, 1, 2, 3...),
-  // and each award is offset so the combinations vary too.
+  // Round robin: visitor 1 gets version 1, visitor 2 gets version 2,
+  // visitor 3 gets version 3, visitor 4 gets version 1 again, and so on.
+  // The same person keeps the same version if they come back.
   async function getTurn(){
     try {
-      const saved = localStorage.getItem('papa-awards-turn');
-      if (saved !== null) return Number(saved);
+      const saved = Number(localStorage.getItem(TURN_KEY));
+      if (localStorage.getItem(TURN_KEY) !== null && Number.isInteger(saved)) return saved;
     } catch(e){}
-    let n;
+
+    let n = NaN;
     try {
-      const r = await fetch(COUNTER + '/hit/' + NS + '/visitor');
-      n = (await r.json()).value;
-    } catch(e){ n = Math.floor(Math.random() * 3); }
-    try { localStorage.setItem('papa-awards-turn', String(n)); } catch(e){}
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 3000);
+      const r = await fetch(COUNTER + '/hit/' + NS + '/visitor', { signal: ctrl.signal });
+      clearTimeout(timer);
+      const data = await r.json();
+      n = Number(data.value) - 1;   // first visitor = 0 = version 1
+    } catch(e){}
+
+    // If the counter is down or answers strangely, still pick a real version
+    if (!Number.isInteger(n) || n < 0) n = Math.floor(Math.random() * 3);
+
+    try { localStorage.setItem(TURN_KEY, String(n)); } catch(e){}
     return n;
   }
 
@@ -158,10 +169,16 @@ const WRITEUPS = {
     const p = new URLSearchParams();
     p.set('usp', 'pp_url');
     CATEGORIES.forEach(c => {
-      const mine = c.key && picks[c.key];
-      p.set('entry.' + c.nameId, mine ? NOMINEE.name : NA);
-      p.set('entry.' + c.emailId, mine ? NOMINEE.email : NA);
-      p.set('entry.' + c.reasonId, mine ? picks[c.key] : NA);
+      if (c.key) {
+        // Moonshot, Tech Wiz and Content Creator: fully filled in
+        p.set('entry.' + c.nameId, NOMINEE.name);
+        p.set('entry.' + c.emailId, NOMINEE.email);
+        p.set('entry.' + c.reasonId, picks[c.key]);
+      } else {
+        p.set('entry.' + c.nameId, NA);
+        p.set('entry.' + c.emailId, NA);
+        p.set('entry.' + c.reasonId, NA);
+      }
     });
     return FORM_URL + '?' + p.toString();
   }
@@ -176,9 +193,9 @@ const WRITEUPS = {
   }
 
   getTurn().then(n => {
-    const offset = { leadership: 0, content: 1, tech: 2 };
+    const version = n % 3;   // 0, 1 or 2
     const picks = {};
-    Object.keys(WRITEUPS).forEach(k => { picks[k] = WRITEUPS[k][(n + offset[k]) % 3]; });
+    Object.keys(WRITEUPS).forEach(k => { picks[k] = WRITEUPS[k][version]; });
 
     $('go').href = buildLink(picks);
     $('go').classList.remove('wait');
@@ -186,9 +203,10 @@ const WRITEUPS = {
     const list = $('mine');
     CATEGORIES.filter(c => c.key).forEach(c => {
       const d = document.createElement('div'); d.className = 'card';
-      d.innerHTML = '<div class="row"><b></b><button class="copy" type="button">Copy</button></div><p></p>';
+      d.innerHTML = '<div class="row"><b></b><button class="copy" type="button">Copy</button></div><p class="who"></p><p></p>';
       d.querySelector('b').textContent = c.name;
-      d.querySelector('p').textContent = picks[c.key];
+      d.querySelector('.who').textContent = NOMINEE.name + ' · ' + NOMINEE.email;
+      d.querySelector('p:last-child').textContent = picks[c.key];
       d.querySelector('button').addEventListener('click', e => copy(picks[c.key], e.target));
       list.appendChild(d);
     });
